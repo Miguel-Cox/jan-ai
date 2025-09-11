@@ -21,6 +21,7 @@ import {
   IconCodeCircle2,
   IconPlayerStopFilled,
   IconX,
+  IconBrowser,
 } from '@tabler/icons-react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
@@ -596,6 +597,28 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
                     useLastUsedModel={initialMessage}
                   />
                 )}
+                {/* Webpage button - always available */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div
+                        className="h-7 p-1 flex items-center justify-center rounded-sm hover:bg-main-view-fg/10 transition-all duration-200 ease-in-out gap-1 cursor-pointer"
+                        onClick={() => {
+                          // Placeholder for webpage functionality
+                          console.log('Webpage button clicked')
+                        }}
+                      >
+                        <IconBrowser
+                          size={18}
+                          className="text-main-view-fg/50"
+                        />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Webpage</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 {/* File attachment - show only for models with mmproj */}
                 {hasMmproj && (
                   <TooltipProvider>
