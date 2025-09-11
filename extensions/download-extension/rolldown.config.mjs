@@ -1,5 +1,5 @@
 import { defineConfig } from 'rolldown'
-import settingJson from './settings.json' with { type: 'json' }
+import settingJson from './settings.json' assert { type: 'json' }
 
 export default defineConfig({
   input: 'src/index.ts',

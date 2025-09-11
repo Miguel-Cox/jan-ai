@@ -1,5 +1,5 @@
 import { defineConfig } from 'rolldown'
-import pkgJson from './package.json' with { type: 'json' }
+import pkgJson from './package.json' assert { type: 'json' }
 
 export default defineConfig([
   {
