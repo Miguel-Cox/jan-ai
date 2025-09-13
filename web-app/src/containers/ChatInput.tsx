@@ -6,6 +6,7 @@ import { usePrompt } from '@/hooks/usePrompt'
 import { useThreads } from '@/hooks/useThreads'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import * as cheerio from "cheerio";
 import {
   Tooltip,
   TooltipContent,
@@ -23,6 +24,12 @@ import {
   IconX,
   IconBrowser,
 } from '@tabler/icons-react'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { Input } from '@/components/ui/input'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -34,6 +41,7 @@ import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { ModelLoader } from '@/containers/loaders/ModelLoader'
 import DropdownToolsAvailable from '@/containers/DropdownToolsAvailable'
 import { useServiceHub } from '@/hooks/useServiceHub'
+import { vi } from 'vitest'
 
 type ChatInputProps = {
   className?: string
@@ -78,6 +86,8 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
   const [connectedServers, setConnectedServers] = useState<string[]>([])
   const [isDragOver, setIsDragOver] = useState(false)
   const [hasMmproj, setHasMmproj] = useState(false)
+  const [webpageUrl, setWebpageUrl] = useState('')
+  const [isWebpagePopoverOpen, setIsWebpagePopoverOpen] = useState(false)
 
   // Check for connected MCP servers
   useEffect(() => {
@@ -123,22 +133,23 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
   // Check if there are active MCP servers
   const hasActiveMCPServers = connectedServers.length > 0 || tools.length > 0
 
-  const handleSendMesage = (prompt: string) => {
+  const handleSendMesage = (p: string) => {
+    const safePrompt = typeof p === "string" ? p : "";
     if (!selectedModel) {
-      setMessage('Please select a model to start chatting.')
-      return
+      setMessage("Please select a model to start chatting.");
+      return;
     }
-    if (!prompt.trim() && uploadedFiles.length === 0) {
-      return
+    if (!safePrompt.trim() && uploadedFiles.length === 0) {
+      return;
     }
-    setMessage('')
+    setMessage("");
     sendMessage(
-      prompt,
+      safePrompt,
       true,
       uploadedFiles.length > 0 ? uploadedFiles : undefined
-    )
-    setUploadedFiles([])
-  }
+    );
+    setUploadedFiles([]);
+  };
 
   useEffect(() => {
     const handleFocusIn = () => {
@@ -540,11 +551,10 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
               minRows={2}
               rows={1}
               maxRows={10}
-              value={prompt}
+              value={prompt ?? ""}   // <-- fallback to empty string
               data-testid={'chat-input'}
               onChange={(e) => {
                 setPrompt(e.target.value)
-                // Count the number of newlines to estimate rows
                 const newRows = (e.target.value.match(/\n/g) || []).length + 1
                 setRows(Math.min(newRows, maxRows))
               }}
@@ -598,27 +608,88 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
                   />
                 )}
                 {/* Webpage button - always available */}
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div
-                        className="h-7 p-1 flex items-center justify-center rounded-sm hover:bg-main-view-fg/10 transition-all duration-200 ease-in-out gap-1 cursor-pointer"
-                        onClick={() => {
-                          // Placeholder for webpage functionality
-                          console.log('Webpage button clicked')
-                        }}
-                      >
-                        <IconBrowser
-                          size={18}
-                          className="text-main-view-fg/50"
-                        />
+                <Popover
+                  open={isWebpagePopoverOpen}
+                  onOpenChange={setIsWebpagePopoverOpen}
+                >
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <PopoverTrigger asChild>
+                          <div className="h-7 p-1 flex items-center justify-center rounded-sm hover:bg-main-view-fg/10 transition-all duration-200 ease-in-out gap-1 cursor-pointer">
+                            <IconBrowser
+                              size={18}
+                              className="text-main-view-fg/50"
+                            />
+                          </div>
+                        </PopoverTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Webpage</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <PopoverContent className="w-80">
+                    <div className="grid gap-4">
+                      <div className="space-y-2">
+                        <h4 className="font-medium leading-none">Webpage</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Enter a URL to fetch its content.
+                        </p>
                       </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Webpage</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                      <div className="grid gap-2">
+                        <Input
+                          id="webpage-url"
+                          placeholder="https://example.com"
+                          className="col-span-2 h-8"
+                          value={webpageUrl}
+                          onChange={(e) => setWebpageUrl(e.target.value)}
+                        />
+                        <Button
+                          onClick={async () => {
+                            if (webpageUrl) {
+                              try {
+                                const proxyUrl =
+                                  "https://api.allorigins.win/get?url=" + encodeURIComponent(webpageUrl);
+                                const res = await fetch(proxyUrl);
+                                const data = await res.json();
+
+                                const htmlString = data.contents || "";
+
+                                // Use cheerio to parse
+                                const $ = cheerio.load(htmlString);
+
+                                // Remove unwanted tags (scripts, styles, etc.)
+                                $("script, style, noscript").remove();
+
+                                // Get the visible text
+                                let visibleText = $("body").text();
+
+                                // Clean it up: trim and collapse multiple spaces/newlines
+                                visibleText = visibleText
+                                  .replace(/\s+/g, " ")
+                                  .replace(/\n\s*\n/g, "\n")
+                                  .trim();
+
+                                console.log("Visible text of:", webpageUrl);
+                                console.log(visibleText);
+
+                                // Append to prompt
+                                setPrompt((prev) => `${prev || ""}\n${visibleText}`);
+                                setIsWebpagePopoverOpen(false);
+                                setWebpageUrl("");
+                              } catch (err) {
+                                console.error("Failed to fetch DOM:", err);
+                              }
+                            }
+                          }}
+                        >
+                          Fetch
+                        </Button>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
                 {/* File attachment - show only for models with mmproj */}
                 {hasMmproj && (
                   <TooltipProvider>
@@ -776,20 +847,18 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
             ) : (
               <Button
                 variant={
-                  !prompt.trim() && uploadedFiles.length === 0
+                  !prompt || (typeof prompt === "string" && !prompt.trim() && uploadedFiles.length === 0)
                     ? null
-                    : 'default'
+                    : "default"
                 }
                 size="icon"
-                disabled={!prompt.trim() && uploadedFiles.length === 0}
+                disabled={
+                  !prompt || (typeof prompt === "string" && !prompt.trim() && uploadedFiles.length === 0)
+                }
                 data-test-id="send-message-button"
-                onClick={() => handleSendMesage(prompt)}
+                onClick={() => handleSendMesage(typeof prompt === "string" ? prompt : "")}
               >
-                {streamingContent ? (
-                  <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
-                ) : (
-                  <ArrowRight className="text-primary-fg" />
-                )}
+                <ArrowRight className="text-primary-fg" />
               </Button>
             )}
           </div>
