@@ -709,33 +709,97 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
 
                                 const htmlString = data.contents || "";
 
-                                // Use cheerio to parse
-                                const $ = cheerio.load(htmlString);
+                                // Enhanced webpage scraping function
+                                const extractCleanText = (html: string): string => {
+                                  const $ = cheerio.load(html);
 
-                                // Remove unwanted tags (scripts, styles, etc.)
-                                $("script, style, noscript").remove();
+                                  // Remove unwanted elements completely
+                                  $('script, style, noscript, iframe, object, embed, svg, canvas').remove();
+                                  $('header, nav, footer, aside, .ads, .advertisement, .social, .share').remove();
+                                  $('[class*="ad-"], [class*="ads-"], [id*="ad-"], [id*="ads-"]').remove();
+                                  $('form, input, button:not(:contains("Read"))').remove();
 
-                                // Get the visible text
-                                let visibleText = $("body").text();
+                                  // Function to get text with proper spacing (mimics innerText)
+                                  const getTextWithSpacing = (element: cheerio.Cheerio): string => {
+                                    let result = '';
+                                    
+                                    element.contents().each((_, node) => {
+                                      if (node.type === 'text') {
+                                        result += $(node).text();
+                                      } else if (node.type === 'tag') {
+                                        const tagName = node.tagName?.toLowerCase();
+                                        const $node = $(node);
+                                        
+                                        // Add line breaks for block elements
+                                        if (['div', 'p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
+                                             'li', 'article', 'section', 'blockquote', 'pre', 'address'].includes(tagName || '')) {
+                                          if (tagName === 'br') {
+                                            result += '\n';
+                                          } else {
+                                            const text = getTextWithSpacing($node);
+                                            if (text.trim()) {
+                                              result += '\n' + text + '\n';
+                                            }
+                                          }
+                                        } else if (['span', 'a', 'em', 'strong', 'b', 'i', 'u', 'code'].includes(tagName || '')) {
+                                          // Inline elements - just get text with spaces
+                                          result += getTextWithSpacing($node) + ' ';
+                                        } else {
+                                          result += getTextWithSpacing($node);
+                                        }
+                                      }
+                                    });
+                                    
+                                    return result;
+                                  };
 
-                                // Clean it up: trim and collapse multiple spaces/newlines
-                                visibleText = visibleText
-                                  .replace(/\s+/g, " ")
-                                  .replace(/\n\s*\n/g, "\n")
-                                  .trim();
+                                  // Start extraction from main content areas
+                                  let contentElement = $('main, article, [role="main"], .content, .main-content, #main, #content');
+                                  if (contentElement.length === 0) {
+                                    contentElement = $('body');
+                                  }
 
-                                console.log("Visible text of:", webpageUrl);
-                                console.log(visibleText);
+                                  let extractedText = getTextWithSpacing(contentElement.first());
+
+                                  // Clean up the extracted text
+                                  extractedText = extractedText
+                                    // Replace multiple spaces with single space
+                                    .replace(/[ \t]+/g, ' ')
+                                    // Replace multiple newlines with double newlines (paragraph breaks)
+                                    .replace(/\n\s*\n\s*\n+/g, '\n\n')
+                                    // Clean up line breaks with spaces
+                                    .replace(/\n\s+/g, '\n')
+                                    .replace(/\s+\n/g, '\n')
+                                    // Remove leading/trailing whitespace
+                                    .trim();
+
+                                  // Extract title and meta description for context
+                                  const title = $('title').text().trim();
+                                  const description = $('meta[name="description"]').attr('content')?.trim() || '';
+                                  
+                                  let finalContent = '';
+                                  if (title) finalContent += `Title: ${title}\n\n`;
+                                  if (description) finalContent += `Description: ${description}\n\n`;
+                                  finalContent += extractedText;
+
+                                  return finalContent;
+                                };
+
+                                const cleanedText = extractCleanText(htmlString);
+
+                                console.log("Extracted text from:", webpageUrl);
+                                console.log("Length:", cleanedText.length, "characters");
+                                console.log(cleanedText)
 
                                 // Add to attached webpages
                                 setAttachedWebpages((prev) => [
                                   ...prev,
-                                  { url: webpageUrl, content: visibleText },
+                                  { url: webpageUrl, content: cleanedText },
                                 ]);
                                 setIsWebpagePopoverOpen(false);
                                 setWebpageUrl("");
                               } catch (err) {
-                                console.error("Failed to fetch DOM:", err);
+                                console.error("Failed to fetch webpage:", err);
                               }
                             }
                           }}
