@@ -88,6 +88,12 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
   const [hasMmproj, setHasMmproj] = useState(false)
   const [webpageUrl, setWebpageUrl] = useState('')
   const [isWebpagePopoverOpen, setIsWebpagePopoverOpen] = useState(false)
+  const [attachedWebpages, setAttachedWebpages] = useState<
+    Array<{
+      url: string
+      content: string
+    }>
+  >([])
 
   // Check for connected MCP servers
   useEffect(() => {
@@ -134,22 +140,32 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
   const hasActiveMCPServers = connectedServers.length > 0 || tools.length > 0
 
   const handleSendMesage = (p: string) => {
-    const safePrompt = typeof p === "string" ? p : "";
+    const safePrompt = typeof p === 'string' ? p : ''
+
+    const webpageContents =
+      attachedWebpages.length > 0
+        ? attachedWebpages
+            .map((w) => `Content from ${w.url}:\n${w.content}`)
+            .join('\n\n')
+        : ''
+
     if (!selectedModel) {
-      setMessage("Please select a model to start chatting.");
-      return;
+      setMessage('Please select a model to start chatting.')
+      return
     }
-    if (!safePrompt.trim() && uploadedFiles.length === 0) {
-      return;
+    if (!safePrompt.trim() && uploadedFiles.length === 0 && !webpageContents) {
+      return
     }
-    setMessage("");
+    setMessage('')
     sendMessage(
       safePrompt,
       true,
-      uploadedFiles.length > 0 ? uploadedFiles : undefined
-    );
-    setUploadedFiles([]);
-  };
+      uploadedFiles.length > 0 ? uploadedFiles : undefined,
+      webpageContents.trim() || undefined,
+    )
+    setUploadedFiles([])
+    setAttachedWebpages([])
+  }
 
   useEffect(() => {
     const handleFocusIn = () => {
@@ -219,6 +235,12 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
 
   const handleRemoveFile = (indexToRemove: number) => {
     setUploadedFiles((prev) =>
+      prev.filter((_, index) => index !== indexToRemove)
+    )
+  }
+
+  const handleRemoveWebpage = (indexToRemove: number) => {
+    setAttachedWebpages((prev) =>
       prev.filter((_, index) => index !== indexToRemove)
     )
   }
@@ -516,8 +538,8 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
             onDragOver={hasMmproj ? handleDragOver : undefined}
             onDrop={hasMmproj ? handleDrop : undefined}
           >
-            {uploadedFiles.length > 0 && (
-              <div className="flex gap-3 items-center p-2 pb-0">
+            {(uploadedFiles.length > 0 || attachedWebpages.length > 0) && (
+              <div className="flex flex-wrap gap-3 items-center p-2 pb-0">
                 {uploadedFiles.map((file, index) => {
                   return (
                     <div
@@ -537,6 +559,37 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
                       <div
                         className="absolute -top-1 -right-2.5 bg-destructive size-5 flex rounded-full items-center justify-center cursor-pointer"
                         onClick={() => handleRemoveFile(index)}
+                      >
+                        <IconX className="text-destructive-fg" size={16} />
+                      </div>
+                    </div>
+                  )
+                })}
+                {attachedWebpages.map((webpage, index) => {
+                  return (
+                    <div
+                      key={index}
+                      className={cn(
+                        'relative border border-main-view-fg/5 rounded-lg h-14 p-2 flex items-center'
+                      )}
+                    >
+                      <div className="flex items-center gap-2 h-full">
+                        <IconBrowser
+                          size={18}
+                          className="text-main-view-fg/50"
+                        />
+                        <a
+                          href={webpage.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-main-view-fg underline max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap"
+                        >
+                          {webpage.url}
+                        </a>
+                      </div>
+                      <div
+                        className="absolute -top-1 -right-2.5 bg-destructive size-5 flex rounded-full items-center justify-center cursor-pointer"
+                        onClick={() => handleRemoveWebpage(index)}
                       >
                         <IconX className="text-destructive-fg" size={16} />
                       </div>
@@ -674,8 +727,11 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
                                 console.log("Visible text of:", webpageUrl);
                                 console.log(visibleText);
 
-                                // Append to prompt
-                                setPrompt((prev) => `${prev || ""}\n${visibleText}`);
+                                // Add to attached webpages
+                                setAttachedWebpages((prev) => [
+                                  ...prev,
+                                  { url: webpageUrl, content: visibleText },
+                                ]);
                                 setIsWebpagePopoverOpen(false);
                                 setWebpageUrl("");
                               } catch (err) {
@@ -847,16 +903,22 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
             ) : (
               <Button
                 variant={
-                  !prompt || (typeof prompt === "string" && !prompt.trim() && uploadedFiles.length === 0)
+                  (typeof prompt === 'string' ? !prompt.trim() : !prompt) &&
+                  uploadedFiles.length === 0 &&
+                  attachedWebpages.length === 0
                     ? null
-                    : "default"
+                    : 'default'
                 }
                 size="icon"
                 disabled={
-                  !prompt || (typeof prompt === "string" && !prompt.trim() && uploadedFiles.length === 0)
+                  (typeof prompt === 'string' ? !prompt.trim() : !prompt) &&
+                  uploadedFiles.length === 0 &&
+                  attachedWebpages.length === 0
                 }
                 data-test-id="send-message-button"
-                onClick={() => handleSendMesage(typeof prompt === "string" ? prompt : "")}
+                onClick={() =>
+                  handleSendMesage(typeof prompt === 'string' ? prompt : '')
+                }
               >
                 <ArrowRight className="text-primary-fg" />
               </Button>

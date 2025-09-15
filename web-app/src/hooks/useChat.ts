@@ -210,7 +210,8 @@ export const useChat = () => {
         size: number
         base64: string
         dataUrl: string
-      }>
+      }>,
+      context?: string
     ) => {
       const activeThread = await getCurrentThread()
 
@@ -224,8 +225,14 @@ export const useChat = () => {
       setAbortController(activeThread.id, abortController)
       updateStreamingContent(emptyThreadContent)
       // Do not add new message on retry
-      if (troubleshooting)
-        addMessage(newUserThreadContent(activeThread.id, message, attachments))
+      if (troubleshooting) {
+        if (message.trim() || (attachments && attachments.length > 0)) {
+          // Add only the user's visible message to chat history, not the context
+          addMessage(
+            newUserThreadContent(activeThread.id, message, attachments),
+          )
+        }
+      }
       updateThreadTimestamp(activeThread.id)
       setPrompt('')
       try {
@@ -239,7 +246,21 @@ export const useChat = () => {
           messages,
           renderInstructions(currentAssistant?.instructions)
         )
-        if (troubleshooting) builder.addUserMessage(message, attachments)
+        // Only add user message to model if there's actual content
+        if (troubleshooting) {
+          if (
+            message.trim() ||
+            (attachments && attachments.length > 0)
+          ) {
+            // Combine context (webpage content) with the user message for the model
+            // but only send the visible message to chat history
+            let finalMessage = message
+            if (context && context.trim()) {
+              finalMessage = `${context}\n\n${message}`
+            }
+            builder.addUserMessage(finalMessage, attachments)
+          }
+        }
 
         let isCompleted = false
 
