@@ -94,6 +94,7 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
       content: string
       originalLength?: number
       wasTruncated?: boolean
+      faviconUrl?: string
     }>
   >([])
 
@@ -577,13 +578,43 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
                       )}
                     >
                       <div className="flex items-center gap-2 h-full">
-                        <IconBrowser
-                          size={18}
-                          className={cn(
-                            "text-main-view-fg/50",
-                            webpage.wasTruncated && "text-yellow-500"
-                          )}
-                        />
+                        <div className="relative w-4 h-4 flex-shrink-0">
+                          {webpage.faviconUrl ? (
+                            <img 
+                              src={webpage.faviconUrl}
+                              alt="Website icon"
+                              className={cn(
+                                "w-4 h-4 rounded-sm object-contain bg-white/10 p-0.5",
+                                webpage.wasTruncated && "ring-1 ring-yellow-500"
+                              )}
+                              loading="lazy"
+                              onError={(e) => {
+                                // Try Google's favicon service as backup
+                                const img = e.currentTarget as HTMLImageElement;
+                                if (!img.src.includes('google.com/s2/favicons')) {
+                                  try {
+                                    const url = new URL(webpage.url);
+                                    img.src = `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=32`;
+                                    return;
+                                  } catch {}
+                                }
+                                // If Google's service also fails, hide favicon and show fallback icon
+                                img.style.display = 'none';
+                                const parent = img.parentElement;
+                                const fallback = parent?.querySelector('.fallback-icon') as HTMLElement;
+                                if (fallback) fallback.style.display = 'block';
+                              }}
+                            />
+                          ) : null}
+                          <IconBrowser
+                            size={16}
+                            className={cn(
+                              "fallback-icon text-main-view-fg/50 absolute inset-0",
+                              webpage.wasTruncated && "text-yellow-500",
+                              webpage.faviconUrl ? "hidden" : "block"
+                            )}
+                          />
+                        </div>
                         <div className="flex flex-col min-w-0 flex-1">
                           <a
                             href={webpage.url}
@@ -799,7 +830,58 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
                                   return finalContent;
                                 };
 
+                                // Function to extract favicon from HTML
+                                const extractFavicon = (html: string, baseUrl: string): string => {
+                                  const $ = cheerio.load(html);
+                                  
+                                  // Try different favicon selectors in order of preference
+                                  const faviconSelectors = [
+                                    'link[rel="icon"][type="image/png"]',
+                                    'link[rel="icon"][type="image/x-icon"]', 
+                                    'link[rel="icon"][type="image/svg+xml"]',
+                                    'link[rel="shortcut icon"]',
+                                    'link[rel="icon"]',
+                                    'link[rel="apple-touch-icon"]'
+                                  ];
+                                  
+                                  for (const selector of faviconSelectors) {
+                                    const faviconElement = $(selector).first();
+                                    if (faviconElement.length > 0) {
+                                      const href = faviconElement.attr('href');
+                                      if (href) {
+                                        // Convert relative URLs to absolute
+                                        if (href.startsWith('//')) {
+                                          return 'https:' + href;
+                                        } else if (href.startsWith('/')) {
+                                          return new URL(href, baseUrl).toString();
+                                        } else if (href.startsWith('http')) {
+                                          return href;
+                                        } else {
+                                          return new URL(href, baseUrl).toString();
+                                        }
+                                      }
+                                    }
+                                  }
+                                  
+                                  // Fallback 1: try common favicon.ico location
+                                  try {
+                                    const url = new URL(baseUrl);
+                                    const faviconIcoUrl = `${url.protocol}//${url.host}/favicon.ico`;
+                                    // We'll return this, and if it fails, we have Google's service as backup
+                                    return faviconIcoUrl;
+                                  } catch {
+                                    // Fallback 2: Use Google's favicon service
+                                    try {
+                                      const url = new URL(baseUrl);
+                                      return `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=32`;
+                                    } catch {
+                                      return '';
+                                    }
+                                  }
+                                };
+
                                 const rawText = extractCleanText(htmlString);
+                                const faviconUrl = extractFavicon(htmlString, webpageUrl);
 
                                 // Handle large content intelligently
                                 const processLargeContent = (content: string, maxChars: number = 25000): string => {
@@ -909,6 +991,7 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
                                 console.log("Extracted text from:", webpageUrl);
                                 console.log("Original length:", rawText.length, "characters");
                                 console.log("Processed length:", processedContent.length, "characters");
+                                console.log("Favicon URL:", faviconUrl || 'No favicon found');
 
                 // Add to attached webpages with truncation info
                 const wasTruncated = rawText.length > processedContent.length;
@@ -918,7 +1001,8 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
                     url: webpageUrl, 
                     content: processedContent,
                     originalLength: rawText.length,
-                    wasTruncated 
+                    wasTruncated,
+                    faviconUrl 
                   },
                 ]);
                                 setIsWebpagePopoverOpen(false);
