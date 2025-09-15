@@ -92,6 +92,8 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
     Array<{
       url: string
       content: string
+      originalLength?: number
+      wasTruncated?: boolean
     }>
   >([])
 
@@ -570,22 +572,34 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
                     <div
                       key={index}
                       className={cn(
-                        'relative border border-main-view-fg/5 rounded-lg h-14 p-2 flex items-center'
+                        'relative border border-main-view-fg/5 rounded-lg p-2 flex items-center',
+                        webpage.wasTruncated ? 'h-16' : 'h-14'
                       )}
                     >
                       <div className="flex items-center gap-2 h-full">
                         <IconBrowser
                           size={18}
-                          className="text-main-view-fg/50"
+                          className={cn(
+                            "text-main-view-fg/50",
+                            webpage.wasTruncated && "text-yellow-500"
+                          )}
                         />
-                        <a
-                          href={webpage.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-main-view-fg underline max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap"
-                        >
-                          {webpage.url}
-                        </a>
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <a
+                            href={webpage.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-main-view-fg underline max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap"
+                            title={webpage.url}
+                          >
+                            {webpage.url}
+                          </a>
+                          {webpage.wasTruncated && (
+                            <span className="text-xs text-yellow-600 dark:text-yellow-400">
+                              Truncated ({webpage.originalLength?.toLocaleString()} → {webpage.content.length.toLocaleString()} chars)
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div
                         className="absolute -top-1 -right-2.5 bg-destructive size-5 flex rounded-full items-center justify-center cursor-pointer"
@@ -687,7 +701,7 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
                       <div className="space-y-2">
                         <h4 className="font-medium leading-none">Webpage</h4>
                         <p className="text-sm text-muted-foreground">
-                          Enter a URL to fetch its content.
+                          Enter a URL to fetch its content. Large content (&gt;25K chars) will be intelligently truncated.
                         </p>
                       </div>
                       <div className="grid gap-2">
@@ -785,17 +799,128 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
                                   return finalContent;
                                 };
 
-                                const cleanedText = extractCleanText(htmlString);
+                                const rawText = extractCleanText(htmlString);
+
+                                // Handle large content intelligently
+                                const processLargeContent = (content: string, maxChars: number = 25000): string => {
+                                  if (content.length <= maxChars) {
+                                    return content;
+                                  }
+
+                                  console.log(`Content is large (${content.length} chars), applying intelligent truncation to ~${maxChars} chars...`);
+
+                                  // Strategy 1: Extract key sections with priority
+                                  const sections = {
+                                    title: '',
+                                    description: '',
+                                    summary: '',
+                                    mainContent: content
+                                  };
+
+                                  // Extract title and description (already included)
+                                  const titleMatch = content.match(/^Title: (.+?)\n/m);
+                                  const descMatch = content.match(/^Description: (.+?)\n/m);
+                                  
+                                  if (titleMatch) sections.title = titleMatch[0];
+                                  if (descMatch) sections.description = descMatch[0];
+
+                                  // Remove title/description from main content for processing
+                                  let mainText = content
+                                    .replace(/^Title: .+?\n\n/m, '')
+                                    .replace(/^Description: .+?\n\n/m, '');
+
+                                  // Strategy 2: Smart content extraction and summarization
+                                  const extractImportantSections = (text: string): string => {
+                                    const lines = text.split('\n');
+                                    const importantLines: string[] = [];
+                                    let currentParagraph = '';
+                                    let charCount = 0;
+                                    const targetLength = maxChars - (sections.title.length + sections.description.length + 500); // Reserve space
+
+                                    for (let i = 0; i < lines.length && charCount < targetLength; i++) {
+                                      const line = lines[i].trim();
+                                      
+                                      // Skip empty lines initially
+                                      if (!line) {
+                                        if (currentParagraph) {
+                                          importantLines.push(currentParagraph);
+                                          importantLines.push(''); // Add paragraph break
+                                          charCount += currentParagraph.length + 1;
+                                          currentParagraph = '';
+                                        }
+                                        continue;
+                                      }
+
+                                      // Priority content (headings, first sentences of paragraphs)
+                                      const isHeading = /^(#+|\d+\.|•|-)\s/.test(line) || line.length < 100;
+                                      const isFirstSentence = !currentParagraph && line.includes('.');
+                                      const isShortLine = line.length < 200;
+
+                                      if (isHeading || isFirstSentence || isShortLine) {
+                                        if (charCount + line.length < targetLength) {
+                                          if (currentParagraph) {
+                                            currentParagraph += ' ' + line;
+                                          } else {
+                                            currentParagraph = line;
+                                          }
+                                        }
+                                      } else {
+                                        // For longer paragraphs, take first sentence if we have room
+                                        const firstSentence = line.split(/[.!?]\s+/)[0];
+                                        if (firstSentence && charCount + firstSentence.length + 50 < targetLength) {
+                                          if (currentParagraph) {
+                                            currentParagraph += ' ' + firstSentence + '.';
+                                          } else {
+                                            currentParagraph = firstSentence + '.';
+                                          }
+                                        }
+                                      }
+                                    }
+
+                                    // Add any remaining paragraph
+                                    if (currentParagraph) {
+                                      importantLines.push(currentParagraph);
+                                    }
+
+                                    return importantLines.join('\n');
+                                  };
+
+                                  // Extract important content
+                                  const extractedContent = extractImportantSections(mainText);
+                                  
+                                  // Combine all sections
+                                  const finalContent = [
+                                    sections.title,
+                                    sections.description,
+                                    extractedContent,
+                                    '\n[NOTE: Content was truncated due to length. Original had ' + content.length + ' characters]'
+                                  ].filter(Boolean).join('\n');
+
+                                  return finalContent;
+                                };
+
+                                // Allow different size limits based on context needs
+                                // Small: 8K (good for simple questions)
+                                // Medium: 25K (default, good for most articles) 
+                                // Large: 50K (for comprehensive analysis, may hit context limits)
+                                const sizeLimit = 25000; // You can make this configurable later
+                                const processedContent = processLargeContent(rawText, sizeLimit);
 
                                 console.log("Extracted text from:", webpageUrl);
-                                console.log("Length:", cleanedText.length, "characters");
-                                console.log(cleanedText)
+                                console.log("Original length:", rawText.length, "characters");
+                                console.log("Processed length:", processedContent.length, "characters");
 
-                                // Add to attached webpages
-                                setAttachedWebpages((prev) => [
-                                  ...prev,
-                                  { url: webpageUrl, content: cleanedText },
-                                ]);
+                // Add to attached webpages with truncation info
+                const wasTruncated = rawText.length > processedContent.length;
+                setAttachedWebpages((prev) => [
+                  ...prev,
+                  { 
+                    url: webpageUrl, 
+                    content: processedContent,
+                    originalLength: rawText.length,
+                    wasTruncated 
+                  },
+                ]);
                                 setIsWebpagePopoverOpen(false);
                                 setWebpageUrl("");
                               } catch (err) {
