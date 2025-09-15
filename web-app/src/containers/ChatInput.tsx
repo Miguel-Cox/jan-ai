@@ -145,12 +145,18 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
   const handleSendMesage = (p: string) => {
     const safePrompt = typeof p === 'string' ? p : ''
 
-    const webpageContents =
+    let webpageContents =
       attachedWebpages.length > 0
-        ? attachedWebpages
-            .map((w) => `Content from ${w.url}:\n${w.content}`)
+        ? 'This is the context:\n' +
+          attachedWebpages
+            .map((w) => `From ${w.url}:\n${w.content}`)
             .join('\n\n')
         : ''
+
+    if (webpageContents) {
+      webpageContents +=
+        '\n\n---\nGiven the context above, follow this instruction:'
+    }
 
     if (!selectedModel) {
       setMessage('Please select a model to start chatting.')
