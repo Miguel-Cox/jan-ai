@@ -57,7 +57,8 @@ export const newUserThreadContent = (
     size: number
     base64: string
     dataUrl: string
-  }>
+  }>,
+  metadata: Record<string, unknown> = {},
 ): ThreadMessage => {
   const contentParts = [
     {
@@ -94,6 +95,7 @@ export const newUserThreadContent = (
     status: MessageStatus.Ready,
     created_at: 0,
     completed_at: 0,
+    metadata,
   }
 }
 /**

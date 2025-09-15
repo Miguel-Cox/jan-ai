@@ -2,7 +2,12 @@
 import { ThreadMessage } from '@janhq/core'
 import { RenderMarkdown } from './RenderMarkdown'
 import React, { Fragment, memo, useCallback, useMemo, useState } from 'react'
-import { IconCopy, IconCopyCheck, IconRefresh } from '@tabler/icons-react'
+import {
+  IconCopy,
+  IconCopyCheck,
+  IconRefresh,
+  IconBrowser,
+} from '@tabler/icons-react'
 import { useAppState } from '@/hooks/useAppState'
 import { cn } from '@/lib/utils'
 import { useMessages } from '@/hooks/useMessages'
@@ -217,15 +222,18 @@ export const ThreadContent = memo(
         {item.role === 'user' && (
           <div className="w-full">
             {/* Render attachments above the message bubble */}
-            {item.content?.some(
-              (c) => (c.type === 'image_url' && c.image_url?.url) || false
-            ) && (
+            {(item.content?.some(
+              (c) => (c.type === 'image_url' && c.image_url?.url) || false,
+            ) ||
+              (item.metadata?.webpageAttachments &&
+                (item.metadata.webpageAttachments as Array<unknown>).length >
+                  0)) && (
               <div className="flex justify-end w-full mb-2">
                 <div className="flex flex-wrap gap-2 max-w-[80%] justify-end">
                   {item.content
                     ?.filter(
                       (c) =>
-                        (c.type === 'image_url' && c.image_url?.url) || false
+                        (c.type === 'image_url' && c.image_url?.url) || false,
                     )
                     .map((contentPart, index) => {
                       // Handle images
@@ -245,6 +253,84 @@ export const ThreadContent = memo(
                       }
                       return null
                     })}
+                  {(
+                    item.metadata?.webpageAttachments as Array<{
+                      url: string
+                      content: string
+                      originalLength?: number
+                      wasTruncated?: boolean
+                      faviconUrl?: string
+                    }>
+                  )?.map((webpage, index) => (
+                    <div
+                      key={`webpage-${index}`}
+                      className={cn(
+                        'relative border border-main-view-fg/5 rounded-lg p-2 flex items-center',
+                        webpage.wasTruncated ? 'h-16' : 'h-14',
+                      )}
+                    >
+                      <div className="flex items-center gap-2 h-full">
+                        <div className="relative w-4 h-4 flex-shrink-0">
+                          {webpage.faviconUrl ? (
+                            <img
+                              src={webpage.faviconUrl}
+                              alt="Website icon"
+                              className={cn(
+                                'w-4 h-4 rounded-sm object-contain bg-white/10 p-0.5',
+                                webpage.wasTruncated &&
+                                  'ring-1 ring-yellow-500',
+                              )}
+                              loading="lazy"
+                              onError={(e) => {
+                                const img = e.currentTarget as HTMLImageElement
+                                if (
+                                  !img.src.includes('google.com/s2/favicons')
+                                ) {
+                                  try {
+                                    const url = new URL(webpage.url)
+                                    img.src = `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=32`
+                                    return
+                                  } catch {}
+                                }
+                                img.style.display = 'none'
+                                const parent = img.parentElement
+                                const fallback = parent?.querySelector(
+                                  '.fallback-icon',
+                                ) as HTMLElement
+                                if (fallback) fallback.style.display = 'block'
+                              }}
+                            />
+                          ) : null}
+                          <IconBrowser
+                            size={16}
+                            className={cn(
+                              'fallback-icon text-main-view-fg/50 absolute inset-0',
+                              webpage.wasTruncated && 'text-yellow-500',
+                              webpage.faviconUrl ? 'hidden' : 'block',
+                            )}
+                          />
+                        </div>
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <a
+                            href={webpage.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-main-view-fg underline max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap"
+                            title={webpage.url}
+                          >
+                            {webpage.url}
+                          </a>
+                          {webpage.wasTruncated && (
+                            <span className="text-xs text-yellow-600 dark:text-yellow-400">
+                              Truncated (
+                              {webpage.originalLength?.toLocaleString()} →{' '}
+                              {webpage.content.length.toLocaleString()} chars)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

@@ -211,7 +211,14 @@ export const useChat = () => {
         base64: string
         dataUrl: string
       }>,
-      context?: string
+      context?: string,
+      webpageAttachments?: Array<{
+        url: string
+        content: string
+        originalLength?: number
+        wasTruncated?: boolean
+        faviconUrl?: string
+      }>,
     ) => {
       const activeThread = await getCurrentThread()
 
@@ -229,7 +236,12 @@ export const useChat = () => {
         if (message.trim() || (attachments && attachments.length > 0)) {
           // Add only the user's visible message to chat history, not the context
           addMessage(
-            newUserThreadContent(activeThread.id, message, attachments),
+            newUserThreadContent(
+              activeThread.id,
+              message,
+              attachments,
+              webpageAttachments ? { webpageAttachments } : {},
+            ),
           )
         }
       }
@@ -244,7 +256,7 @@ export const useChat = () => {
 
         const builder = new CompletionMessagesBuilder(
           messages,
-          renderInstructions(currentAssistant?.instructions)
+          renderInstructions(currentAssistant?.instructions),
         )
         // Only add user message to model if there's actual content
         if (troubleshooting) {
@@ -258,6 +270,7 @@ export const useChat = () => {
             if (context && context.trim()) {
               finalMessage = `${context}\n\n${message}`
             }
+            console.log(finalMessage)
             builder.addUserMessage(finalMessage, attachments)
           }
         }
@@ -280,7 +293,7 @@ export const useChat = () => {
           activeProvider
         ) {
           const modelConfig = activeProvider.models.find(
-            (m) => m.id === selectedModel?.id
+            (m) => m.id === selectedModel?.id,
           )
           assistantLoopSteps += 1
 
@@ -293,9 +306,9 @@ export const useChat = () => {
                       key !== 'ngl' &&
                       value.controller_props?.value !== undefined &&
                       value.controller_props?.value !== null &&
-                      value.controller_props?.value !== ''
+                      value.controller_props?.value !== '',
                   )
-                  .map(([key, value]) => [key, value.controller_props?.value])
+                  .map(([key, value]) => [key, value.controller_props?.value]),
               )
             : undefined
 
@@ -309,7 +322,7 @@ export const useChat = () => {
             {
               ...modelSettings,
               ...currentAssistant.parameters,
-            } as unknown as Record<string, object>
+            } as unknown as Record<string, object>,
           )
 
           if (!completion) throw new Error('No completion received')
@@ -364,7 +377,7 @@ export const useChat = () => {
                         ...e,
                         state: 'pending',
                       })),
-                    }
+                    },
                   )
                   updateStreamingContent(currentContent)
                   if (pendingDeltaCount > 0) {
@@ -393,7 +406,7 @@ export const useChat = () => {
                       ...e,
                       state: 'pending',
                     })),
-                  }
+                  },
                 )
                 updateStreamingContent(currentContent)
                 if (pendingDeltaCount > 0) {
@@ -414,7 +427,7 @@ export const useChat = () => {
                     throw new Error(
                       'message' in part
                         ? (part.message as string)
-                        : (JSON.stringify(part) ?? '')
+                        : (JSON.stringify(part) ?? ''),
                     )
                   }
 
@@ -475,14 +488,14 @@ export const useChat = () => {
                 /// Increase context size
                 activeProvider = await increaseModelContextSize(
                   selectedModel.id,
-                  activeProvider
+                  activeProvider,
                 )
                 continue
               } else if (method === 'context_shift' && selectedModel?.id) {
                 /// Enable context_shift
                 activeProvider = await toggleOnContextShifting(
                   selectedModel?.id,
-                  activeProvider
+                  activeProvider,
                 )
                 continue
               } else throw error
@@ -508,7 +521,7 @@ export const useChat = () => {
             {
               tokenSpeed: useAppState.getState().tokenSpeed,
               assistant: currentAssistant,
-            }
+            },
           )
 
           builder.addAssistantMessage(accumulatedText, undefined, toolCalls)
@@ -519,7 +532,7 @@ export const useChat = () => {
             abortController,
             approvedTools,
             allowAllMCPPermissions ? undefined : showApprovalModal,
-            allowAllMCPPermissions
+            allowAllMCPPermissions,
           )
           addMessage(updatedMessage ?? finalContent)
           updateStreamingContent(emptyThreadContent)
