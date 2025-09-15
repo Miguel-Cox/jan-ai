@@ -171,6 +171,7 @@ const ChatInput = ({ model, className, initialMessage }: ChatInputProps) => {
       true,
       uploadedFiles.length > 0 ? uploadedFiles : undefined,
       webpageContents.trim() || undefined,
+      attachedWebpages,
     )
     setUploadedFiles([])
     setAttachedWebpages([])
